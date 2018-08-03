@@ -10,7 +10,7 @@ pipeline {
     }
     stage('Archive JAR') {
       steps {
-        sh "mvn deploy -DskipTests -s ~/.m2/settings.xml"
+        sh "mvn package -DskipTests -s ~/.m2/settings.xml"
       }
     }
     stage('Build Image') {
