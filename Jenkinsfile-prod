@@ -1,0 +1,91 @@
+def namespace, activeSvc, canarySvc
+
+pipeline {
+  agent {
+      label 'maven'
+  }
+  stages {
+    stage('Promote Image to PROD') {
+      steps {
+        script {
+          openshift.withCluster() {
+            openshift.tag("${env.DEV_PROJECT}/catalog:latest", "${env.PROD_PROJECT}/catalog:latest")
+            openshift.tag("${env.DEV_PROJECT}/web-ui:latest", "${env.PROD_PROJECT}/web-ui:latest")
+          }
+        }
+      }
+    }
+    stage('Deploy Canary 10%') {
+      steps {
+        script {
+          openshift.withCluster() {
+            openshift.withProject(env.PROD_PROJECT) {
+              activeSvc = openshift.selector("route", "catalog").object().spec.to.name
+              def suffix = (activeSvc ==~ /catalog-(\d+)/) ? (activeSvc.replaceAll(/catalog-(\d+)/, '$1') as int) + 1 : "1"
+              canarySvc = "catalog-${suffix}"
+
+              def template = 'https://raw.githubusercontent.com/openshift-labs/devops-oab-labs/master/openshift/catalog-deployment-template.yaml'
+              openshift.apply(
+                openshift.process("-f", template, "-p", "IMAGE_VERSION=latest", "-p", "APP_NAME=${canarySvc}", "-p", "IMAGE_NAMESPACE=", "-l", "deployment=${canarySvc}")
+              )
+              openshift.set("route-backends", "catalog", "${activeSvc}=90%", "${canarySvc}=10%")
+            }
+          }
+        }
+      }
+    }
+    stage('Grow Canary 50%') {
+      steps {
+        timeout(time:15, unit:'MINUTES') {
+            input message: "Send 50% of live traffic to new release?", ok: "Approve"
+        }
+        script {
+          openshift.withCluster() {
+            openshift.withProject(env.PROD_PROJECT) {
+              openshift.set("route-backends", "catalog", "${activeSvc}=50%", "${canarySvc}=50%")
+            }
+          }
+        }
+      }
+    }
+    stage('Rollout 100%') {
+      steps {
+        timeout(time:15, unit:'MINUTES') {
+            input message: "Send 100% of live traffic to the new release?", ok: "Approve"
+        }
+        script {
+          openshift.withCluster() {
+            openshift.withProject(env.PROD_PROJECT) {
+              openshift.set("route-backends", "catalog", "${canarySvc}=100%")
+              openshift.selector(["dc/${activeSvc}", "svc/${activeSvc}"]).delete()
+            }
+          }
+        }
+      }
+    }
+  }
+  post { 
+    aborted {
+      script {
+        openshift.withCluster() {
+          openshift.withProject(env.PROD_PROJECT) {
+            echo "Rolling back to current release ${activeSvc} and deleting the canary"
+            openshift.set("route-backends", "catalog", "${activeSvc}=100%")
+            openshift.selector(["dc/${canarySvc}", "svc/${canarySvc}"]).delete()
+          }
+        }
+      }
+    }
+    failure { 
+      script {
+        openshift.withCluster() {
+          openshift.withProject(env.PROD_PROJECT) {
+            echo "Rolling back to current release ${activeSvc} and deleting the canary"
+            openshift.set("route-backends", "catalog", "${activeSvc}=100%")
+            openshift.selector(["dc/${canarySvc}", "svc/${canarySvc}"]).delete()
+          }
+        }
+      }
+    }
+  }
+}
