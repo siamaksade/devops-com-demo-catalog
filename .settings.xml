@@ -5,11 +5,6 @@
             <username>admin</username>
             <password>admin123</password>
         </server>
-        <server>
-            <id>gogs</id>
-            <username>${GOGS_USERNAME}</username>
-            <password>${GOGS_PASSWORD}</password>
-        </server>
     </servers>
     <mirrors>
         <mirror>

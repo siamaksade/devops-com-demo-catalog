@@ -5,14 +5,12 @@ pipeline {
   stages {
     stage('Build JAR') {
       steps {
-        git url: 'https://github.com/siamaksade/devops-com-demo-catalog.git'
-        sh "cp .settings.xml ~/.m2/settings.xml"
-        sh "mvn package"
+        sh "mvn package -s ~/.m2/settings.xml"
       }
     }
     stage('Archive JAR') {
       steps {
-        sh "mvn deploy -DskipTests"
+        sh "mvn deploy -DskipTests -s ~/.m2/settings.xml"
       }
     }
     stage('Build Image') {
@@ -34,7 +32,7 @@ pipeline {
               def result, dc = openshift.selector("dc", "catalog")
               dc.rollout().latest()
               timeout(10) {
-                  result = dc.rollout().status("-w")
+                  result = dc.rollout().status()
               }
               if (result.status != 0) {
                   error(result.err)
