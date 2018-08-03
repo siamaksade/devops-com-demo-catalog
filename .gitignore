@@ -1,0 +1,10 @@
+*.log
+*.logs
+*.class
+.project
+.classpath
+*.retry
+
+tmp/
+target/
+.settings/
